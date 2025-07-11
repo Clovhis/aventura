@@ -12,7 +12,7 @@ Actúa como un Dungeon Master experto en el universo de Vampire: The Masquerade.
 
 Tu narrativa debe ser inmersiva, oscura y atmosférica. Describe los sonidos, luces, olores y emociones. El jugador podrá tomar decisiones dentro de un marco narrativo, pero no puede actuar fuera de las reglas del mundo. Si intenta hacerlo, deberás redirigirlo lógicamente usando consecuencias internas (La Mascarada, la sed, cazadores, la Camarilla, etc.).
 
-Mantén el control narrativo como un Dungeon Master tradicional, guiando la historia hacia adelante por eventos, pistas y encuentros. No permitas decisiones que desvíen al jugador del foco de la historia.
+Mantén el control narrativo como un Dungeon Master tradicional, guiando la historia hacia adelante por eventos, pistas y encuentros. No permitas decisiones que desvíen al jugador del foco de la historia. Nunca escribas diálogos, pensamientos ni acciones por el jugador; deja que él decida cómo actuar.
 
 Sistema de combate:
 Cuando haya combates, realiza tiradas de dados estilo Vampire: The Masquerade (d10).
@@ -105,6 +105,8 @@ class Player:
         self.max_health = 20
         self.health = self.max_health
         self.inventory: list[str] = []
+        self.name: str = ""
+        self.gender: str = ""
 
     def change_health(self, delta: int) -> None:
         self.health = max(0, min(self.max_health, self.health + delta))
@@ -124,10 +126,29 @@ class AdventureWindow(QtWidgets.QMainWindow):
         self.resize(800, 600)
         self.player = Player()
         self.setup_ui()
+        self.ask_player_details()
         _load_secure_env()
         self.client = _create_ai_client()
         self.messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        if self.player.name:
+            detalle = (
+                f"Mi nombre es {self.player.name}. Soy {self.player.gender}. Usa mi "
+                "nombre y pronombres acordes."
+            )
+            self.messages.append({"role": "user", "content": detalle})
         self.start_adventure()
+
+    def ask_player_details(self) -> None:
+        name, ok = QtWidgets.QInputDialog.getText(
+            self, "Comencemos", "¿Cuál es tu nombre?"
+        )
+        if ok and name.strip():
+            self.player.name = name.strip()
+        gender, ok = QtWidgets.QInputDialog.getItem(
+            self, "Género", "¿Eres hombre o mujer?", ["Hombre", "Mujer"], 0, False
+        )
+        if ok:
+            self.player.gender = gender.lower()
 
     def setup_ui(self):
         central = QtWidgets.QWidget()
@@ -173,31 +194,6 @@ class AdventureWindow(QtWidgets.QMainWindow):
                 subcontrol-origin: margin;
                 left: 10px;
             }
-            """
-        )
-
-        self.setStyleSheet(
-            """
-            QWidget { background-color: #1a001a; color: #f0f0f0; }
-            QTextEdit {
-                background-color: #2b0a2b;
-                color: #f0f0f0;
-                font-size: 14px;
-                font-family: Consolas, monospace;
-            }
-            QLineEdit {
-                background-color: #2b0a2b;
-                color: #ff5555;
-                font-family: Consolas, monospace;
-            }
-            QPushButton {
-                background-color: #4c0d4c;
-                color: #f0f0f0;
-                border: 1px solid #660f66;
-                padding: 5px;
-                font-family: Consolas, monospace;
-            }
-            QPushButton:hover { background-color: #660f66; }
             """
         )
 
@@ -271,10 +267,23 @@ class AdventureWindow(QtWidgets.QMainWindow):
         self.update_health_display()
 
     def parse_user_input(self, text: str) -> None:
-        m = re.match(r"\b(?:agarro|tomo|cojo|recojo|levanto)\s+(.+)", text, re.I)
-        if m:
-            item = m.group(1).strip().strip("\"' ")
+        pick = re.match(r"\b(?:agarro|tomo|cojo|recojo|levanto)\s+(.+)", text, re.I)
+        if pick:
+            item = pick.group(1).strip().strip("\"' ")
+            item = re.sub(r"^(?:el|la|los|las)\s+", "", item, flags=re.I)
+            item = item[:1].upper() + item[1:]
             self.add_item(item)
+            return
+
+        drop = re.match(r"\b(?:suelto|tiro|descarto|dejo)\s+(.+)", text, re.I)
+        if drop:
+            item = drop.group(1).strip().strip("\"' ")
+            item = re.sub(r"^(?:el|la|los|las)\s+", "", item, flags=re.I)
+            item = item[:1].upper() + item[1:]
+            if item in self.player.inventory:
+                self.remove_item(item)
+            else:
+                self.append_text(f'<i>No tienes "{item}"</i>')
 
     def parse_ai_response(self, text: str) -> None:
         vida = re.search(r"Vida\s+actual[:\s]*(\d+)/(\d+)", text, re.I)
@@ -306,9 +315,6 @@ class AdventureWindow(QtWidgets.QMainWindow):
         self.append_text(f'<span style="color:#FF5555;">&gt; {user_text}</span>')
         self.messages.append({"role": "user", "content": user_text})
         self.parse_user_input(user_text)
-
-        self.append_text(f'<span style="color:#ff5555;">&gt; {user_text}</span>')
-        self.messages.append({"role": "user", "content": user_text})
         self.input.clear()
         QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
         try:
