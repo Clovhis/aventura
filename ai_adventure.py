@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 from cryptography.fernet import Fernet
 from PyQt5 import QtWidgets, QtCore
+import re
 from openai import AzureOpenAI
 
 
@@ -110,6 +111,8 @@ class AdventureWindow(QtWidgets.QMainWindow):
             "Bolsa de sangre llena",
             "Primeros Auxilios",
         ]
+        self.health = 20
+        self.max_health = 20
         self.setup_ui()
         _load_secure_env()
         self.client = _create_ai_client()
@@ -210,7 +213,16 @@ class AdventureWindow(QtWidgets.QMainWindow):
         inv_vbox.addWidget(self.inv_list)
         inv_layout.addWidget(inv_group)
         inv_group.setMaximumWidth(200)
+        
+        health_group = QtWidgets.QGroupBox("Salud")
+        health_group.setAlignment(QtCore.Qt.AlignHCenter)
+        health_vbox = QtWidgets.QVBoxLayout(health_group)
+        self.health_label = QtWidgets.QLabel()
+        health_vbox.addWidget(self.health_label)
+        inv_layout.addWidget(health_group)
+
         self.update_inventory_display()
+        self.update_health_display()
 
     def append_text(self, text: str) -> None:
         self.text_view.append(text)
@@ -239,6 +251,31 @@ class AdventureWindow(QtWidgets.QMainWindow):
             self.update_inventory_display()
             self.append_text(f'<i>{old} ahora es "{new}"</i>')
 
+    def update_health_display(self) -> None:
+        self.health_label.setText(f"{self.health}/{self.max_health}")
+
+    def change_health(self, delta: int) -> None:
+        self.health = max(0, min(self.max_health, self.health + delta))
+        self.update_health_display()
+
+    def parse_user_input(self, text: str) -> None:
+        m = re.match(r"\b(?:agarro|tomo|cojo|recojo|levanto)\s+(.+)", text, re.I)
+        if m:
+            item = m.group(1).strip().strip("\"' ")
+            self.add_item(item)
+
+    def parse_ai_response(self, text: str) -> None:
+        vida = re.search(r"Vida\s+actual[:\s]*(\d+)/(\d+)", text, re.I)
+        if vida:
+            self.health = int(vida.group(1))
+            self.max_health = int(vida.group(2))
+            self.update_health_display()
+        for dmg in re.findall(r"Recibes\s+(\d+)\s+punto", text, re.I):
+            self.change_health(-int(dmg))
+        for item in re.findall(r"Obtienes\s+\"([^\"]+)\"", text, re.I):
+            if item not in self.inventory:
+                self.add_item(item)
+
     def start_adventure(self) -> None:
         response = self.client.chat.completions.create(
             model="gpt-4o-mini",
@@ -247,6 +284,7 @@ class AdventureWindow(QtWidgets.QMainWindow):
         text = response.choices[0].message.content.strip()
         self.messages.append({"role": "assistant", "content": text})
         self.append_text(text)
+        self.parse_ai_response(text)
 
     def send_message(self) -> None:
         user_text = self.input.text().strip()
@@ -255,6 +293,7 @@ class AdventureWindow(QtWidgets.QMainWindow):
 
         self.append_text(f'<span style="color:#FF5555;">&gt; {user_text}</span>')
         self.messages.append({"role": "user", "content": user_text})
+        self.parse_user_input(user_text)
 
         self.append_text(f'<span style="color:#ff5555;">&gt; {user_text}</span>')
         self.messages.append({"role": "user", "content": user_text})
@@ -268,6 +307,7 @@ class AdventureWindow(QtWidgets.QMainWindow):
             text = response.choices[0].message.content.strip()
             self.messages.append({"role": "assistant", "content": text})
             self.append_text(text)
+            self.parse_ai_response(text)
         except Exception as exc:
             QtWidgets.QMessageBox.critical(self, "Error", str(exc))
         finally:
