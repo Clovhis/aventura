@@ -62,8 +62,32 @@ class AdventureWindow(QtWidgets.QMainWindow):
         self.setCentralWidget(central)
         layout = QtWidgets.QVBoxLayout(central)
 
+        self.setStyleSheet(
+            """
+            QWidget { background-color: #1a001a; color: #f0f0f0; }
+            QTextEdit {
+                background-color: #2b0a2b;
+                color: #f0f0f0;
+                font-size: 14px;
+                font-family: Consolas, monospace;
+            }
+            QLineEdit {
+                background-color: #2b0a2b;
+                color: #ff5555;
+                font-family: Consolas, monospace;
+            }
+            QPushButton {
+                background-color: #4c0d4c;
+                color: #f0f0f0;
+                border: 1px solid #660f66;
+                padding: 5px;
+                font-family: Consolas, monospace;
+            }
+            QPushButton:hover { background-color: #660f66; }
+            """
+        )
+
         self.text_view = QtWidgets.QTextEdit(readOnly=True)
-        self.text_view.setStyleSheet("font-size: 14px;")
         layout.addWidget(self.text_view)
 
         self.input = QtWidgets.QLineEdit()
@@ -92,7 +116,7 @@ class AdventureWindow(QtWidgets.QMainWindow):
         user_text = self.input.text().strip()
         if not user_text:
             return
-        self.append_text(f"> {user_text}")
+        self.append_text(f'<span style="color:#ff5555;">&gt; {user_text}</span>')
         self.messages.append({"role": "user", "content": user_text})
         self.input.clear()
         QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
