@@ -91,9 +91,19 @@ class Item:
 
 def extraer_objeto(texto: str) -> str:
     item = texto.strip().strip("\"' ")
-    item = re.sub(r"^(?:el|la|los|las|un|una|unos|unas|mi|mis|tu|tus|su|sus)\s+", "", item, flags=re.I)
-    item = re.split(r"\s+y\s+|\s+para\s+|\s+con\s+", item, 1)[0]
-    item = item.strip()
+    item = re.sub(
+        r"^(?:el|la|los|las|un|una|unos|unas|mi|mis|tu|tus|su|sus)\s+",
+        "",
+        item,
+        flags=re.I,
+    )
+    item = re.split(
+        r"\s+y\s+|\s+para\s+|\s+con\s+|\s+al\s+(?:piso|suelo)\b|\s+con\s+fuerza\b|\s+fuertemente\b",
+        item,
+        1,
+        flags=re.I,
+    )[0]
+    item = re.sub(r"[.,!?]+$", "", item).strip()
     return item[:1].upper() + item[1:]
 
 
@@ -226,7 +236,7 @@ class AdventureWindow(QtWidgets.QMainWindow):
                 border: 1px solid #660f66;
                 padding: 5px;
                 font-family: Consolas, monospace;
-                max-width: 400px;
+                min-width: 150px;
             }
             """
         )
