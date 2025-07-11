@@ -100,19 +100,29 @@ def _create_ai_client() -> AzureOpenAI:
     )
 
 
+class Player:
+    def __init__(self) -> None:
+        self.max_health = 20
+        self.health = self.max_health
+        self.inventory: list[str] = []
+
+    def change_health(self, delta: int) -> None:
+        self.health = max(0, min(self.max_health, self.health + delta))
+
+    def add_item(self, item: str) -> None:
+        self.inventory.append(item)
+
+    def remove_item(self, item: str) -> None:
+        if item in self.inventory:
+            self.inventory.remove(item)
+
+
 class AdventureWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Aventura Vampiresca")
         self.resize(800, 600)
-        self.inventory = [
-            "Cuchillo",
-            "Linterna",
-            "Bolsa de sangre llena",
-            "Primeros Auxilios",
-        ]
-        self.health = 20
-        self.max_health = 20
+        self.player = Player()
         self.setup_ui()
         _load_secure_env()
         self.client = _create_ai_client()
@@ -230,32 +240,34 @@ class AdventureWindow(QtWidgets.QMainWindow):
 
     def update_inventory_display(self) -> None:
         self.inv_list.clear()
-        for item in self.inventory:
+        for item in self.player.inventory:
             self.inv_list.addItem(item)
 
     def add_item(self, item: str) -> None:
-        self.inventory.append(item)
+        self.player.add_item(item)
         self.update_inventory_display()
         self.append_text(f'<i>Obtienes "{item}"</i>')
 
     def remove_item(self, item: str) -> None:
-        if item in self.inventory:
-            self.inventory.remove(item)
+        if item in self.player.inventory:
+            self.player.remove_item(item)
             self.update_inventory_display()
             self.append_text(f'<i>"{item}" ha sido removido del inventario</i>')
 
     def update_item(self, old: str, new: str) -> None:
-        if old in self.inventory:
-            idx = self.inventory.index(old)
-            self.inventory[idx] = new
+        if old in self.player.inventory:
+            idx = self.player.inventory.index(old)
+            self.player.inventory[idx] = new
             self.update_inventory_display()
             self.append_text(f'<i>{old} ahora es "{new}"</i>')
 
     def update_health_display(self) -> None:
-        self.health_label.setText(f"{self.health}/{self.max_health}")
+        self.health_label.setText(
+            f"Salud: {self.player.health}/{self.player.max_health}"
+        )
 
     def change_health(self, delta: int) -> None:
-        self.health = max(0, min(self.max_health, self.health + delta))
+        self.player.change_health(delta)
         self.update_health_display()
 
     def parse_user_input(self, text: str) -> None:
@@ -267,13 +279,13 @@ class AdventureWindow(QtWidgets.QMainWindow):
     def parse_ai_response(self, text: str) -> None:
         vida = re.search(r"Vida\s+actual[:\s]*(\d+)/(\d+)", text, re.I)
         if vida:
-            self.health = int(vida.group(1))
-            self.max_health = int(vida.group(2))
+            self.player.health = int(vida.group(1))
+            self.player.max_health = int(vida.group(2))
             self.update_health_display()
         for dmg in re.findall(r"Recibes\s+(\d+)\s+punto", text, re.I):
             self.change_health(-int(dmg))
         for item in re.findall(r"Obtienes\s+\"([^\"]+)\"", text, re.I):
-            if item not in self.inventory:
+            if item not in self.player.inventory:
                 self.add_item(item)
 
     def start_adventure(self) -> None:
