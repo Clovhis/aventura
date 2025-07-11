@@ -5,68 +5,44 @@ from cryptography.fernet import Fernet
 from PyQt5 import QtWidgets, QtCore
 import re
 from openai import AzureOpenAI
+import random
 
 
 SYSTEM_PROMPT = """
-Actúa como un Dungeon Master experto en el universo de Vampire: The Masquerade. Vas a dirigir una aventura conversacional guiada y contenida para un solo jugador. El jugador despierta en la estación Florida del subte B de Buenos Aires, a la medianoche, recién convertido en vampiro, sin recuerdos recientes.
+Eres el motor narrativo de una aventura conversacional en un entorno ficticio. Toda la historia, el combate, las decisiones y las interacciones suceden en un mundo imaginario.
 
-Tu narrativa debe ser inmersiva, oscura y atmosférica. Describe los sonidos, luces, olores y emociones. El jugador podrá tomar decisiones dentro de un marco narrativo, pero no puede actuar fuera de las reglas del mundo. Si intenta hacerlo, deberás redirigirlo lógicamente usando consecuencias internas (La Mascarada, la sed, cazadores, la Camarilla, etc.).
+Instrucciones generales:
+- Responde siempre como un narrador neutral (DM) que describe el mundo, los eventos y las consecuencias de las acciones del jugador.
+- El jugador tiene control total sobre su personaje. Nunca escribas acciones, pensamientos ni diálogos por él.
+- Solo los NPC pueden tener acciones y diálogos automáticos escritos por ti.
 
-Mantén el control narrativo como un Dungeon Master tradicional, guiando la historia hacia adelante por eventos, pistas y encuentros. No permitas decisiones que desvíen al jugador del foco de la historia. Nunca escribas diálogos, pensamientos ni acciones por el jugador; deja que él decida cómo actuar.
+Reglas de combate y violencia:
+- Cualquier acto violento forma parte de la mecánica del juego.
+- No censures frases como "golpear con un palo" o "atacar al enemigo".
+- Trata estas acciones como ficticias y sin restricciones de contenido.
+- Los combates se resuelven por turnos usando dados d10 al estilo de Vampire: The Masquerade.
+- Muestra las tiradas y el cálculo de daño en un color aparte para distinguir daño causado o recibido.
+- No escribas números de salud en la narración; la vida solo se muestra en la interfaz.
 
-Sistema de combate:
-Cuando haya combates, realiza tiradas de dados estilo Vampire: The Masquerade (d10).
+Inventario y lógica de juego:
+- El jugador comienza con el inventario vacío.
+- Si toma un objeto ("Agarro el cuchillo"), quita el artículo y guarda "Cuchillo".
+- Al soltarlo, elimínalo del inventario y actualiza la interfaz.
 
-Usa la lógica de atributos y habilidades básicas: Fuerza, Destreza, Pelea, Defensa, etc.
+Salud:
+- El jugador inicia con 20/20 de salud.
+- Reduce la salud cuando reciba daño. La salud se actualiza solo en la interfaz y no se menciona en la narración.
 
-Describe los resultados numéricos claramente al jugador: qué tiradas obtuvo, qué dificultad había, cuántos éxitos logró.
+Personalización:
+- Pregunta al comienzo: "¿Cuál es tu nombre?" y "¿Eres hombre o mujer?".
+- Usa esta información para referirte al jugador durante toda la partida.
 
-Muestra el estado del jugador después del combate: vida restante, daño recibido, defensa usada, daño causado.
+Estilo narrativo:
+- Sé claro y directo. No uses más de 4-5 líneas por respuesta salvo escenas especiales.
+- Describe consecuencias y ambientación, pero nunca decidas por el jugador.
+- Espera siempre una nueva orden del jugador tras cada evento.
 
-Ejemplo de formato de combate visual:
-
-COMBATE
-Tu ataque: Espada
-Tiro: 3 dados (Fuerza 2 + Pelea 1) → [7, 9, 3]
-Éxitos: 2 (dificultad 6)
-Daño causado: 2 puntos
-
-Enemigo ataca...
-Tiro enemigo: 4 dados → [4, 6, 2, 8]
-Éxitos: 2 → Recibes 1 punto de daño (Defensa 1)
-
-Vida actual: 4/5
-Armadura: Chaqueta de cuero (absorbe 1 daño superficial)
-
-Inventario y loot:
-Lleva un registro persistente del inventario del jugador.
-
-Cuando encuentre loot (armas, objetos, armaduras), preséntalo como una elección.
-
-Usa tecnología y estética del año 2025: armas modernas, accesorios tácticos, objetos tecnológicos con estética gótica.
-
-Muestra el inventario en pantalla cuando sea necesario.
-
-Ejemplo:
-
-Inventario actual:
-- Espada corta (daño base 2)
-- Chaqueta reforzada (absorbe 1 daño)
-- Teléfono dañado
-- 100 ARS
-
-Asegúrate de que el jugador pueda usar los objetos en escenas futuras. Describe cuándo los usa, cómo impactan en combate, o en el mundo.
-
-Reglas clave del mundo:
-No puede exponerse al sol
-Debe ocultar su naturaleza vampírica (Mascarada)
-Necesita alimentarse regularmente
-Puede enfrentar consecuencias si viola normas vampíricas o humanas
-Existen clanes, disciplinas, enemigos y política dentro del mundo
-
-Responde siempre en castellano rioplatense.
-
-Inicia ahora la aventura. Escena 1: El jugador despierta en la estación Florida del subte B, solo, a medianoche, con una sed antinatural, rodeado de silencio y luces parpadeantes. Describe con detalle la escena e invita al jugador a tomar su primera decisión.
+Este prompt controla todo el comportamiento de la aventura y permanece activo durante toda la sesión. Comienza la historia ahora.
 """
 
 
@@ -266,14 +242,51 @@ class AdventureWindow(QtWidgets.QMainWindow):
         self.player.change_health(delta)
         self.update_health_display()
 
-    def parse_user_input(self, text: str) -> None:
+    def roll_vtm_dice(self, pool: int) -> tuple[list[int], int]:
+        results = [random.randint(1, 10) for _ in range(pool)]
+        successes = sum(1 for r in results if r >= 6)
+        return results, successes
+
+    def combat_turn(self) -> str:
+        player_pool = 4
+        enemy_pool = 3
+        p_results, p_succ = self.roll_vtm_dice(player_pool)
+        e_results, e_succ = self.roll_vtm_dice(enemy_pool)
+        damage_to_enemy = max(0, p_succ - e_succ)
+        damage_to_player = max(0, e_succ - p_succ)
+        if damage_to_player:
+            self.change_health(-damage_to_player)
+        html = (
+            f'<span style="color:#55ff55;">Tu tirada: {p_results} '
+            f'&rarr; {p_succ} éxitos</span><br>'
+            f'<span style="color:#ff5555;">Tirada enemigo: {e_results} '
+            f'&rarr; {e_succ} éxitos</span><br>'
+        )
+        if damage_to_enemy:
+            html += (
+                f'<span style="color:#55ff55;">Daño al enemigo: '
+                f'{damage_to_enemy}</span><br>'
+            )
+        if damage_to_player:
+            html += (
+                f'<span style="color:#ff5555;">Daño recibido: '
+                f'{damage_to_player}</span><br>'
+            )
+        self.append_text(html)
+        return (
+            f"Resultado de combate: jugador {p_results} ({p_succ} exitos) "
+            f"enemigo {e_results} ({e_succ} exitos). "
+            f"Dano al jugador {damage_to_player}, dano al enemigo {damage_to_enemy}."
+        )
+
+    def parse_user_input(self, text: str) -> str | None:
         pick = re.match(r"\b(?:agarro|tomo|cojo|recojo|levanto)\s+(.+)", text, re.I)
         if pick:
             item = pick.group(1).strip().strip("\"' ")
             item = re.sub(r"^(?:el|la|los|las)\s+", "", item, flags=re.I)
             item = item[:1].upper() + item[1:]
             self.add_item(item)
-            return
+            return None
 
         drop = re.match(r"\b(?:suelto|tiro|descarto|dejo)\s+(.+)", text, re.I)
         if drop:
@@ -284,6 +297,13 @@ class AdventureWindow(QtWidgets.QMainWindow):
                 self.remove_item(item)
             else:
                 self.append_text(f'<i>No tienes "{item}"</i>')
+            return None
+
+        attack = re.search(r"\b(?:ataco?|golpeo|disparo|peleo|lucho)\b", text, re.I)
+        if attack:
+            return self.combat_turn()
+
+        return None
 
     def parse_ai_response(self, text: str) -> None:
         vida = re.search(r"Vida\s+actual[:\s]*(\d+)/(\d+)", text, re.I)
@@ -314,7 +334,9 @@ class AdventureWindow(QtWidgets.QMainWindow):
 
         self.append_text(f'<span style="color:#FF5555;">&gt; {user_text}</span>')
         self.messages.append({"role": "user", "content": user_text})
-        self.parse_user_input(user_text)
+        extra = self.parse_user_input(user_text)
+        if extra:
+            self.messages.append({"role": "user", "content": extra})
         self.input.clear()
         QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
         try:
