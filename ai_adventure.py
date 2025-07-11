@@ -163,8 +163,36 @@ class AdventureWindow(QtWidgets.QMainWindow):
             """
         )
 
+        self.setStyleSheet(
+            """
+            QWidget { background-color: #1a001a; color: #f0f0f0; }
+            QTextEdit {
+                background-color: #2b0a2b;
+                color: #f0f0f0;
+                font-size: 14px;
+                font-family: Consolas, monospace;
+            }
+            QLineEdit {
+                background-color: #2b0a2b;
+                color: #ff5555;
+                font-family: Consolas, monospace;
+            }
+            QPushButton {
+                background-color: #4c0d4c;
+                color: #f0f0f0;
+                border: 1px solid #660f66;
+                padding: 5px;
+                font-family: Consolas, monospace;
+            }
+            QPushButton:hover { background-color: #660f66; }
+            """
+        )
+
+
+
         self.text_view = QtWidgets.QTextEdit(readOnly=True)
         convo_layout.addWidget(self.text_view)
+
 
         self.input = QtWidgets.QLineEdit()
         self.input.returnPressed.connect(self.send_message)
@@ -224,30 +252,10 @@ class AdventureWindow(QtWidgets.QMainWindow):
         user_text = self.input.text().strip()
         if not user_text:
             return
-        lower = user_text.lower()
-        if lower.startswith("/agregar "):
-            item = user_text[9:].strip()
-            if item:
-                self.add_item(item)
-            self.input.clear()
-            return
-        if lower.startswith("/tirar "):
-            item = user_text[7:].strip()
-            if item:
-                self.remove_item(item)
-            self.input.clear()
-            return
-        if lower.startswith("/usar "):
-            rest = user_text[6:].strip()
-            if "->" in rest:
-                old, new = [p.strip() for p in rest.split("->", 1)]
-                if old and new:
-                    self.update_item(old, new)
-            else:
-                if rest:
-                    self.remove_item(rest)
-            self.input.clear()
-            return
+
+        self.append_text(f'<span style="color:#FF5555;">&gt; {user_text}</span>')
+        self.messages.append({"role": "user", "content": user_text})
+
         self.append_text(f'<span style="color:#ff5555;">&gt; {user_text}</span>')
         self.messages.append({"role": "user", "content": user_text})
         self.input.clear()
