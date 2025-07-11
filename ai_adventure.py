@@ -6,14 +6,67 @@ from PyQt5 import QtWidgets, QtCore
 from openai import AzureOpenAI
 
 
-SYSTEM_PROMPT = (
-    "Eres el narrador de una aventura interactiva ambientada en Buenos Aires "
-    "contempor\u00e1neo, inspirada en Vampire: The Masquerade. "
-    "El jugador despierta en las v\u00edas del Subte B, estaci\u00f3n Florida, sin "
-    "recordar c\u00f3mo lleg\u00f3 all\u00ed. Describe la escena en segunda persona "
-    "y pregunt\u00e1 qu\u00e9 hace. No tomes decisiones por el jugador y responde "
-    "en castellano rioplatense."
-)
+SYSTEM_PROMPT = """
+Act\u00faa como un Dungeon Master experto en el universo de Vampire: The Masquerade. Vas a dirigir una aventura conversacional guiada y contenida para un solo jugador. El jugador despierta en la estaci\u00f3n Florida del subte B de Buenos Aires, a la medianoche, reci\u00e9n convertido en vampiro, sin recuerdos recientes.
+
+Tu narrativa debe ser inmersiva, oscura y atmosf\u00e9rica. Describe los sonidos, luces, olores y emociones. El jugador podr\u00e1 tomar decisiones dentro de un marco narrativo, pero no puede actuar fuera de las reglas del mundo. Si intenta hacerlo, deber\u00e1s redirigirlo l\u00f3gicamente usando consecuencias internas (La Mascarada, la sed, cazadores, la Camarilla, etc.).
+
+Mant\u00e9n el control narrativo como un Dungeon Master tradicional, guiando la historia hacia adelante por eventos, pistas y encuentros. No permitas decisiones que desv\u00eden al jugador del foco de la historia.
+
+\ud83c\udfb2 Sistema de combate:
+Cuando haya combates, realiza tiradas de dados estilo Vampire: The Masquerade (d10).
+
+Usa la l\u00f3gica de atributos y habilidades b\u00e1sicas: Fuerza, Destreza, Pelea, Defensa, etc.
+
+Describe los resultados num\u00e9ricos claramente al jugador: qu\u00e9 tiradas obtuvo, qu\u00e9 dificultad hab\u00eda, cu\u00e1ntos \u00e9xitos logr\u00f3.
+
+Muestra el estado del jugador despu\u00e9s del combate: vida restante, da\u00f1o recibido, defensa usada, da\u00f1o causado.
+
+Ejemplo de formato de combate visual:
+
+\ud83e\udddb\u200d\u2642\ufe0f COMBATE \ud83e\udddb\u200d\u2642\ufe0f
+Tu ataque: Espada
+Tiro: 3 dados (Fuerza 2 + Pelea 1) \u2192 [7, 9, 3]
+\u00c9xitos: 2 (dificultad 6)
+Da\u00f1o causado: 2 puntos
+
+Enemigo ataca...
+Tiro enemigo: 4 dados \u2192 [4, 6, 2, 8]
+\u00c9xitos: 2 \u2192 Recibes 1 punto de da\u00f1o (Defensa 1)
+
+\u2764\ufe0f Vida actual: 4/5
+\ud83d\udee1\ufe0f Armadura: Chaqueta de cuero (absorbe 1 da\u00f1o superficial)
+
+\ud83c\udf92 Inventario y loot:
+Lleva un registro persistente del inventario del jugador.
+
+Cuando encuentre loot (armas, objetos, armaduras), pres\u00e9ntalo como una elecci\u00f3n.
+
+Usa tecnolog\u00eda y est\u00e9tica del a\u00f1o 2025: armas modernas, accesorios t\u00e1cticos, objetos tecnol\u00f3gicos con est\u00e9tica g\u00f3tica.
+
+Muestra el inventario en pantalla cuando sea necesario.
+
+Ejemplo:
+
+\ud83c\udf92 Inventario actual:
+- Espada corta (da\u00f1o base 2)
+- Chaqueta reforzada (absorbe 1 da\u00f1o)
+- Tel\u00e9fono da\u00f1ado
+- 100 ARS
+
+Aseg\u00farate de que el jugador pueda usar los objetos en escenas futuras. Describe cu\u00e1ndo los usa, c\u00f3mo impactan en combate, o en el mundo.
+
+\u26a0\ufe0f Reglas clave del mundo:
+No puede exponerse al sol
+Debe ocultar su naturaleza vamp\u00edrica (Mascarada)
+Necesita alimentarse regularmente
+Puede enfrentar consecuencias si viola normas vamp\u00edricas o humanas
+Existen clanes, disciplinas, enemigos y pol\u00edtica dentro del mundo
+
+Responde siempre en castellano rioplatense.
+
+Inicia ahora la aventura. Escena 1: El jugador despierta en la estaci\u00f3n Florida del subte B, solo, a medianoche, con una sed antinatural, rodeado de silencio y luces parpadeantes. Describe con detalle la escena e invita al jugador a tomar su primera decisi\u00f3n.
+"""
 
 
 def _resource_path(name: str) -> Path:
@@ -51,6 +104,12 @@ class AdventureWindow(QtWidgets.QMainWindow):
         super().__init__()
         self.setWindowTitle("Aventura Vampiresca")
         self.resize(800, 600)
+        self.inventory = [
+            "Cuchillo",
+            "Linterna",
+            "Bolsa de sangre llena",
+            "Primeros Auxilios",
+        ]
         self.setup_ui()
         _load_secure_env()
         self.client = _create_ai_client()
@@ -60,7 +119,49 @@ class AdventureWindow(QtWidgets.QMainWindow):
     def setup_ui(self):
         central = QtWidgets.QWidget()
         self.setCentralWidget(central)
-        layout = QtWidgets.QVBoxLayout(central)
+        main_layout = QtWidgets.QHBoxLayout(central)
+        convo_layout = QtWidgets.QVBoxLayout()
+        main_layout.addLayout(convo_layout, 3)
+        inv_layout = QtWidgets.QVBoxLayout()
+        main_layout.addLayout(inv_layout, 1)
+
+        self.setStyleSheet(
+            """
+            QWidget { background-color: #1a001a; color: #f0f0f0; }
+            QTextEdit {
+                background-color: #2b0a2b;
+                color: #f0f0f0;
+                font-size: 14px;
+                font-family: Consolas, monospace;
+            }
+            QLineEdit {
+                background-color: #2b0a2b;
+                color: #ff5555;
+                font-family: Consolas, monospace;
+            }
+            QPushButton {
+                background-color: #4c0d4c;
+                color: #f0f0f0;
+                border: 1px solid #660f66;
+                padding: 5px;
+                font-family: Consolas, monospace;
+            }
+            QPushButton:hover { background-color: #660f66; }
+            QListWidget {
+                background-color: #2b0a2b;
+                color: #f0f0f0;
+                font-family: Consolas, monospace;
+            }
+            QGroupBox {
+                border: 1px solid #660f66;
+                margin-top: 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+            }
+            """
+        )
 
         self.setStyleSheet(
             """
@@ -87,8 +188,11 @@ class AdventureWindow(QtWidgets.QMainWindow):
             """
         )
 
+
+
         self.text_view = QtWidgets.QTextEdit(readOnly=True)
-        layout.addWidget(self.text_view)
+        convo_layout.addWidget(self.text_view)
+
 
         self.input = QtWidgets.QLineEdit()
         self.input.returnPressed.connect(self.send_message)
@@ -97,11 +201,43 @@ class AdventureWindow(QtWidgets.QMainWindow):
         h = QtWidgets.QHBoxLayout()
         h.addWidget(self.input)
         h.addWidget(send_btn)
-        layout.addLayout(h)
+        convo_layout.addLayout(h)
+
+        inv_group = QtWidgets.QGroupBox("Inventario")
+        inv_group.setAlignment(QtCore.Qt.AlignHCenter)
+        inv_vbox = QtWidgets.QVBoxLayout(inv_group)
+        self.inv_list = QtWidgets.QListWidget()
+        inv_vbox.addWidget(self.inv_list)
+        inv_layout.addWidget(inv_group)
+        inv_group.setMaximumWidth(200)
+        self.update_inventory_display()
 
     def append_text(self, text: str) -> None:
         self.text_view.append(text)
         self.text_view.verticalScrollBar().setValue(self.text_view.verticalScrollBar().maximum())
+
+    def update_inventory_display(self) -> None:
+        self.inv_list.clear()
+        for item in self.inventory:
+            self.inv_list.addItem(item)
+
+    def add_item(self, item: str) -> None:
+        self.inventory.append(item)
+        self.update_inventory_display()
+        self.append_text(f'<i>Obtienes "{item}"</i>')
+
+    def remove_item(self, item: str) -> None:
+        if item in self.inventory:
+            self.inventory.remove(item)
+            self.update_inventory_display()
+            self.append_text(f'<i>"{item}" ha sido removido del inventario</i>')
+
+    def update_item(self, old: str, new: str) -> None:
+        if old in self.inventory:
+            idx = self.inventory.index(old)
+            self.inventory[idx] = new
+            self.update_inventory_display()
+            self.append_text(f'<i>{old} ahora es "{new}"</i>')
 
     def start_adventure(self) -> None:
         response = self.client.chat.completions.create(
@@ -116,6 +252,10 @@ class AdventureWindow(QtWidgets.QMainWindow):
         user_text = self.input.text().strip()
         if not user_text:
             return
+
+        self.append_text(f'<span style="color:#FF5555;">&gt; {user_text}</span>')
+        self.messages.append({"role": "user", "content": user_text})
+
         self.append_text(f'<span style="color:#ff5555;">&gt; {user_text}</span>')
         self.messages.append({"role": "user", "content": user_text})
         self.input.clear()
