@@ -220,6 +220,14 @@ class AdventureWindow(QtWidgets.QMainWindow):
                 subcontrol-origin: margin;
                 left: 10px;
             }
+            QToolTip {
+                background-color: #4c0d4c;
+                color: #f0f0f0;
+                border: 1px solid #660f66;
+                padding: 5px;
+                font-family: Consolas, monospace;
+                max-width: 400px;
+            }
             """
         )
 
@@ -314,7 +322,16 @@ class AdventureWindow(QtWidgets.QMainWindow):
         self.level_label.setText(f"Nivel: {self.player.level}")
 
     def show_item_tooltip(self, item: QtWidgets.QListWidgetItem) -> None:
+        QtWidgets.QToolTip.setFont(QtGui.QFont("Consolas", 10))
         QtWidgets.QToolTip.showText(QtGui.QCursor.pos(), item.toolTip(), self.inv_list)
+
+    def match_inventory_item(self, text: str) -> str | None:
+        nombre = extraer_objeto(text)
+        lower = nombre.lower()
+        for obj in self.player.inventory:
+            if re.search(rf"\b{re.escape(obj.name.lower())}\b", lower):
+                return obj.name
+        return None
 
     def change_health(self, delta: int) -> None:
         self.player.change_health(delta)
@@ -373,10 +390,11 @@ class AdventureWindow(QtWidgets.QMainWindow):
             re.I,
         )
         if drop:
-            nombre = extraer_objeto(drop.group(1))
-            if any(obj.name == nombre for obj in self.player.inventory):
-                self.remove_item(nombre)
+            match = self.match_inventory_item(drop.group(1))
+            if match:
+                self.remove_item(match)
             else:
+                nombre = extraer_objeto(drop.group(1))
                 self.append_text(f'<i>No tienes "{nombre}"</i>')
             return None
 
