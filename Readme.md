@@ -9,3 +9,7 @@ Esta aplicaci\u00f3n genera una historia interactiva al estilo de las viejas ave
 3. Inici\u00e1 el juego con `python ai_adventure.py`.
 
 La interfaz est\u00e1 hecha con PyQt5 y requiere conexi\u00f3n a internet para comunicarse con OpenAI.
+
+## Descarga de builds portables
+
+Cada commit en `main` genera un zip `ai_adventure_portable.zip` en [Releases](../../releases). Descargalo, descompr\u00edmelo y ejecut\u00e1 `ai_adventure.exe` en Windows.
