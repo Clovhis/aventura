@@ -1,8 +1,11 @@
-# System Hardware Inspector
-Este repositorio incluye una app hecha enteramente en Python, y te tira la información de hardware del sistema en una interfaz gráfica moderna basada en PyQt5.
-La aplicación detalla la marca, tipo, velocidad y capacidad de cada módulo de memoria RAM. También presenta el nombre completo del CPU.
-Al iniciarse, la herramienta escanea tu hardware de forma automática y lo exhibe en la ventana izquierda. A la derecha aparecerán las recomendaciones de la IA una vez que finalice el análisis, y esas sugerencias también se guardan en un PDF.
+# Aventura Conversacional
 
-## Descargar la aplicación portable
-Cada versión se publica como .zip en la sección **Releases**. 
-Bajá la última versión, descomprimila donde quieras porque es portable, y listo ejecutás el .exe
+Esta aplicaci\u00f3n genera una historia interactiva al estilo de las viejas aventuras de texto, pero usando Azure OpenAI para narrar. El jugador despierta en las v\u00edas del Subte B, estaci\u00f3n Florida, y debe escribir qu\u00e9 hace para continuar. La historia se desarrolla en un Buenos Aires actual plagado de vampiros, con tono similar a *Vampire: The Masquerade*.
+
+## Uso
+
+1. Cre\u00e1 un archivo `.env` con las variables `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT` y `AZURE_OPENAI_API_VERSION`.
+2. Ejecut\u00e1 `python setup_keys.py` para generar `.env.secure` y `.key`.
+3. Inici\u00e1 el juego con `python ai_adventure.py`.
+
+La interfaz est\u00e1 hecha con PyQt5 y requiere conexi\u00f3n a internet para comunicarse con OpenAI.
