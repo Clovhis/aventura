@@ -1,11 +1,11 @@
 # Aventura Conversacional
 
-Esta aplicaci\u00f3n genera una historia interactiva al estilo de las viejas aventuras de texto, usando Azure OpenAI como motor narrativo. El jugador controla su personaje en un mundo ficticio y toma decisiones a trav\u00e9s de la interfaz.
+Esta aplicación genera una historia interactiva al estilo de las viejas aventuras de texto, usando Azure OpenAI como motor narrativo. La trama se desarrolla en Buenos Aires y se narra completamente en castellano argento.
 
-Al iniciar, la ventana pregunta de forma inmersiva el nombre y el g\u00e9nero del jugador. Con esa informaci\u00f3n, la narraci\u00f3n se personaliza usando pronombres y el nombre elegido.
+Al iniciar, la ventana pregunta el nombre, el género y la edad del jugador. Con esos datos la narración se personaliza por completo.
 
-El juego mantiene un inventario din\u00e1mico y un sistema de salud visible en pantalla (20/20 al comenzar). Al recoger o soltar objetos, la interfaz se actualiza en tiempo real.
-El combate se resuelve por turnos con dados d10 al estilo *Vampire: The Masquerade*. Las tiradas reales y el daño se muestran en colores diferentes y la salud solo cambia en el indicador de vida.
+La interfaz muestra un inventario dinámico con tooltips detallados de cada ítem (tipo, daño, material, estado, etc.), un indicador de salud y otro de nivel. El jugador arranca con 20/20 de vida y nivel 1.
+El combate se resuelve por turnos con dados d10 al estilo *Vampire: The Masquerade*. Las tiradas y el daño aparecen en colores aparte y la salud solo cambia en su indicador.
 
 ## Uso
 

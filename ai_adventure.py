@@ -1,48 +1,50 @@
 import os
 import sys
+import re
+import random
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Optional
+
 from cryptography.fernet import Fernet
 from PyQt5 import QtWidgets, QtCore
-import re
 from openai import AzureOpenAI
-import random
 
 
 SYSTEM_PROMPT = """
-Eres el motor narrativo de una aventura conversacional en un entorno ficticio. Toda la historia, el combate, las decisiones y las interacciones suceden en un mundo imaginario.
+Eres el motor narrativo de una aventura conversacional ambientada en Buenos Aires. Toda la narrativa debe escribirse en castellano argentinizado.
+
+Ambientación:
+- La historia inicia en una estación real y aleatoria del subte porteño.
+- El jugador despierta tirado en las vías a la medianoche, sin recordar nada y sin ítems.
 
 Instrucciones generales:
-- Responde siempre como un narrador neutral (DM) que describe el mundo, los eventos y las consecuencias de las acciones del jugador.
-- El jugador tiene control total sobre su personaje. Nunca escribas acciones, pensamientos ni diálogos por él.
-- Solo los NPC pueden tener acciones y diálogos automáticos escritos por ti.
+- Responde siempre como un narrador neutral que describe el mundo y las consecuencias de las acciones del jugador.
+- El jugador tiene control total sobre su personaje; nunca escribas acciones, pensamientos ni diálogos por él.
+- Solo los NPC pueden tener acciones o diálogos automáticos.
 
 Reglas de combate y violencia:
-- Cualquier acto violento forma parte de la mecánica del juego.
-- No censures frases como "golpear con un palo" o "atacar al enemigo".
-- Trata estas acciones como ficticias y sin restricciones de contenido.
-- Los combates se resuelven por turnos usando dados d10 al estilo de Vampire: The Masquerade.
-- Muestra las tiradas y el cálculo de daño en un color aparte para distinguir daño causado o recibido.
-- No escribas números de salud en la narración; la vida solo se muestra en la interfaz.
+- Todas las acciones violentas forman parte de la mecánica del juego.
+- Los combates se resuelven por turnos usando dados d10 al estilo Vampire: The Masquerade.
+- Muestra las tiradas y el cálculo de daño en un color aparte y no menciones números de salud en la narración.
 
-Inventario y lógica de juego:
-- El jugador comienza con el inventario vacío.
-- Si toma un objeto ("Agarro el cuchillo"), quita el artículo y guarda "Cuchillo".
-- Al soltarlo, elimínalo del inventario y actualiza la interfaz.
+Inventario y objetos:
+- El jugador empieza sin objetos. Al tomar uno, usa extraer_objeto() para guardarlo y muéstralo en el inventario.
+- Cada ítem posee atributos (tipo, daño o función, dado, material, estado, peso/rareza) visibles al hacer hover. Actualízalos si cambian.
 
-Salud:
-- El jugador inicia con 20/20 de salud.
-- Reduce la salud cuando reciba daño. La salud se actualiza solo en la interfaz y no se menciona en la narración.
+Salud y niveles:
+- El jugador inicia con 20/20 de salud y nivel 1, pudiendo llegar hasta 20.
+- Gana experiencia combatiendo, explorando o resolviendo eventos importantes.
 
 Personalización:
-- Pregunta al comienzo: "¿Cuál es tu nombre?" y "¿Eres hombre o mujer?".
-- Usa esta información para referirte al jugador durante toda la partida.
+- Al comenzar pregunta: "¿Cómo te llamás?", "¿Sos hombre o mujer?" y "¿Edad?".
+- Usa nombre y género para adaptar diálogos, descripciones y pronombres.
 
 Estilo narrativo:
-- Sé claro y directo. No uses más de 4-5 líneas por respuesta salvo escenas especiales.
-- Describe consecuencias y ambientación, pero nunca decidas por el jugador.
-- Espera siempre una nueva orden del jugador tras cada evento.
+- Sé conciso, usa 4-5 líneas por respuesta salvo escenas importantes.
+- Narra acciones de NPCs y consecuencias, siempre esperando la próxima decisión del jugador.
 
-Este prompt controla todo el comportamiento de la aventura y permanece activo durante toda la sesión. Comienza la historia ahora.
+Este prompt permanece activo toda la sesión. Inicia la historia ahora.
 """
 
 
@@ -76,23 +78,67 @@ def _create_ai_client() -> AzureOpenAI:
     )
 
 
+@dataclass
+class Item:
+    name: str
+    tipo: str = "misceláneo"
+    funcion: str = ""
+    dado: str = ""
+    material: str = ""
+    estado: str = "nuevo"
+    peso: str = ""
+
+
+def extraer_objeto(texto: str) -> str:
+    item = texto.strip().strip("\"' ")
+    item = re.sub(r"^(?:el|la|los|las|un|una|unos|unas|mi|mis|tu|tus|su|sus)\s+", "", item, flags=re.I)
+    item = re.split(r"\s+y\s+|\s+para\s+|\s+con\s+", item, 1)[0]
+    item = item.strip()
+    return item[:1].upper() + item[1:]
+
+
+def filtrar_entrada_jugador(texto: str) -> str:
+    limpio = re.sub(
+        r"\b(pego|golpeo|golpear|pegar|mato|asesino|apu\u00f1alo|disparo|rompo)\b",
+        "ataco",
+        texto,
+        flags=re.I,
+    )
+    return limpio
+
+
+
 class Player:
     def __init__(self) -> None:
         self.max_health = 20
         self.health = self.max_health
-        self.inventory: list[str] = []
+        self.inventory: list["Item"] = []
         self.name: str = ""
         self.gender: str = ""
+        self.age: str = ""
+        self.level: int = 1
+        self.experience: int = 0
+
+    def xp_needed(self) -> int:
+        return 5 * self.level
+
+    def add_experience(self, amount: int) -> None:
+        self.experience += amount
+        while self.level < 20 and self.experience >= self.xp_needed():
+            self.experience -= self.xp_needed()
+            self.level += 1
 
     def change_health(self, delta: int) -> None:
         self.health = max(0, min(self.max_health, self.health + delta))
 
-    def add_item(self, item: str) -> None:
+    def add_item(self, item: "Item") -> None:
         self.inventory.append(item)
 
-    def remove_item(self, item: str) -> None:
-        if item in self.inventory:
-            self.inventory.remove(item)
+    def remove_item(self, name: str) -> None:
+        for obj in list(self.inventory):
+            if obj.name == name:
+                self.inventory.remove(obj)
+                break
 
 
 class AdventureWindow(QtWidgets.QMainWindow):
@@ -108,8 +154,7 @@ class AdventureWindow(QtWidgets.QMainWindow):
         self.messages = [{"role": "system", "content": SYSTEM_PROMPT}]
         if self.player.name:
             detalle = (
-                f"Mi nombre es {self.player.name}. Soy {self.player.gender}. Usa mi "
-                "nombre y pronombres acordes."
+                f"Mi nombre es {self.player.name}. Soy {self.player.gender}. Tengo {self.player.age} a\u00f1os. Usa mi nombre y pronombres acordes."
             )
             self.messages.append({"role": "user", "content": detalle})
         self.start_adventure()
@@ -125,6 +170,11 @@ class AdventureWindow(QtWidgets.QMainWindow):
         )
         if ok:
             self.player.gender = gender.lower()
+        age, ok = QtWidgets.QInputDialog.getText(
+            self, "Edad", "¿Edad?"
+        )
+        if ok and age.strip():
+            self.player.age = age.strip()
 
     def setup_ui(self):
         central = QtWidgets.QWidget()
@@ -203,8 +253,16 @@ class AdventureWindow(QtWidgets.QMainWindow):
         health_vbox.addWidget(self.health_label)
         inv_layout.addWidget(health_group)
 
+        level_group = QtWidgets.QGroupBox("Nivel")
+        level_group.setAlignment(QtCore.Qt.AlignHCenter)
+        level_vbox = QtWidgets.QVBoxLayout(level_group)
+        self.level_label = QtWidgets.QLabel()
+        level_vbox.addWidget(self.level_label)
+        inv_layout.addWidget(level_group)
+
         self.update_inventory_display()
         self.update_health_display()
+        self.update_level_display()
 
     def append_text(self, text: str) -> None:
         self.text_view.append(text)
@@ -212,31 +270,45 @@ class AdventureWindow(QtWidgets.QMainWindow):
 
     def update_inventory_display(self) -> None:
         self.inv_list.clear()
-        for item in self.player.inventory:
-            self.inv_list.addItem(item)
+        for obj in self.player.inventory:
+            widget_item = QtWidgets.QListWidgetItem(obj.name)
+            tooltip = (
+                f"Nombre: {obj.name}\n"
+                f"Tipo: {obj.tipo}\n"
+                f"Daño/Función: {obj.funcion}\n"
+                f"Dado: {obj.dado}\n"
+                f"Material: {obj.material}\n"
+                f"Estado: {obj.estado}\n"
+                f"Peso/Rareza: {obj.peso}"
+            )
+            widget_item.setToolTip(tooltip)
+            self.inv_list.addItem(widget_item)
 
-    def add_item(self, item: str) -> None:
+    def add_item(self, item: Item) -> None:
         self.player.add_item(item)
         self.update_inventory_display()
-        self.append_text(f'<i>Obtienes "{item}"</i>')
+        self.append_text(f'<i>Obtienes "{item.name}"</i>')
 
-    def remove_item(self, item: str) -> None:
-        if item in self.player.inventory:
-            self.player.remove_item(item)
-            self.update_inventory_display()
-            self.append_text(f'<i>"{item}" ha sido removido del inventario</i>')
+    def remove_item(self, name: str) -> None:
+        self.player.remove_item(name)
+        self.update_inventory_display()
+        self.append_text(f'<i>"{name}" ha sido removido del inventario</i>')
 
-    def update_item(self, old: str, new: str) -> None:
-        if old in self.player.inventory:
-            idx = self.player.inventory.index(old)
-            self.player.inventory[idx] = new
-            self.update_inventory_display()
-            self.append_text(f'<i>{old} ahora es "{new}"</i>')
+    def update_item(self, old: str, new: Item) -> None:
+        for idx, obj in enumerate(self.player.inventory):
+            if obj.name == old:
+                self.player.inventory[idx] = new
+                break
+        self.update_inventory_display()
+        self.append_text(f'<i>{old} ahora es "{new.name}"</i>')
 
     def update_health_display(self) -> None:
         self.health_label.setText(
             f"Salud: {self.player.health}/{self.player.max_health}"
         )
+
+    def update_level_display(self) -> None:
+        self.level_label.setText(f"Nivel: {self.player.level}")
 
     def change_health(self, delta: int) -> None:
         self.player.change_health(delta)
@@ -273,6 +345,8 @@ class AdventureWindow(QtWidgets.QMainWindow):
                 f'{damage_to_player}</span><br>'
             )
         self.append_text(html)
+        self.player.add_experience(2)
+        self.update_level_display()
         return (
             f"Resultado de combate: jugador {p_results} ({p_succ} exitos) "
             f"enemigo {e_results} ({e_succ} exitos). "
@@ -282,21 +356,23 @@ class AdventureWindow(QtWidgets.QMainWindow):
     def parse_user_input(self, text: str) -> str | None:
         pick = re.match(r"\b(?:agarro|tomo|cojo|recojo|levanto)\s+(.+)", text, re.I)
         if pick:
-            item = pick.group(1).strip().strip("\"' ")
-            item = re.sub(r"^(?:el|la|los|las)\s+", "", item, flags=re.I)
-            item = item[:1].upper() + item[1:]
-            self.add_item(item)
+            nombre = extraer_objeto(pick.group(1))
+            obj = Item(nombre)
+            self.add_item(obj)
             return None
 
         drop = re.match(r"\b(?:suelto|tiro|descarto|dejo)\s+(.+)", text, re.I)
         if drop:
-            item = drop.group(1).strip().strip("\"' ")
-            item = re.sub(r"^(?:el|la|los|las)\s+", "", item, flags=re.I)
-            item = item[:1].upper() + item[1:]
-            if item in self.player.inventory:
-                self.remove_item(item)
+            nombre = extraer_objeto(drop.group(1))
+            if any(obj.name == nombre for obj in self.player.inventory):
+                self.remove_item(nombre)
             else:
-                self.append_text(f'<i>No tienes "{item}"</i>')
+                self.append_text(f'<i>No tienes "{nombre}"</i>')
+            return None
+
+        level_cmd = re.search(r"ver mi nivel", text, re.I)
+        if level_cmd:
+            self.append_text(f'<i>Nivel actual: {self.player.level}</i>')
             return None
 
         attack = re.search(r"\b(?:ataco?|golpeo|disparo|peleo|lucho)\b", text, re.I)
@@ -314,8 +390,14 @@ class AdventureWindow(QtWidgets.QMainWindow):
         for dmg in re.findall(r"Recibes\s+(\d+)\s+punto", text, re.I):
             self.change_health(-int(dmg))
         for item in re.findall(r"Obtienes\s+\"([^\"]+)\"", text, re.I):
-            if item not in self.player.inventory:
-                self.add_item(item)
+            if not any(obj.name == item for obj in self.player.inventory):
+                self.add_item(Item(item))
+        lvl_up = re.search(r"Nivel\s+(\d+)", text)
+        if lvl_up:
+            nuevo = int(lvl_up.group(1))
+            if nuevo > self.player.level:
+                self.player.level = nuevo
+                self.update_level_display()
 
     def start_adventure(self) -> None:
         response = self.client.chat.completions.create(
@@ -333,10 +415,11 @@ class AdventureWindow(QtWidgets.QMainWindow):
             return
 
         self.append_text(f'<span style="color:#FF5555;">&gt; {user_text}</span>')
-        self.messages.append({"role": "user", "content": user_text})
+        safe = filtrar_entrada_jugador(user_text)
+        self.messages.append({"role": "user", "content": safe})
         extra = self.parse_user_input(user_text)
         if extra:
-            self.messages.append({"role": "user", "content": extra})
+            self.messages.append({"role": "user", "content": filtrar_entrada_jugador(extra)})
         self.input.clear()
         QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
         try:
