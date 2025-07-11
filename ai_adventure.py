@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from cryptography.fernet import Fernet
-from PyQt5 import QtWidgets, QtCore
+from PyQt5 import QtWidgets, QtCore, QtGui
 from openai import AzureOpenAI
 
 
@@ -264,6 +264,9 @@ class AdventureWindow(QtWidgets.QMainWindow):
         self.update_health_display()
         self.update_level_display()
 
+        self.inv_list.setMouseTracking(True)
+        self.inv_list.itemEntered.connect(self.show_item_tooltip)
+
     def append_text(self, text: str) -> None:
         self.text_view.append(text)
         self.text_view.verticalScrollBar().setValue(self.text_view.verticalScrollBar().maximum())
@@ -309,6 +312,9 @@ class AdventureWindow(QtWidgets.QMainWindow):
 
     def update_level_display(self) -> None:
         self.level_label.setText(f"Nivel: {self.player.level}")
+
+    def show_item_tooltip(self, item: QtWidgets.QListWidgetItem) -> None:
+        QtWidgets.QToolTip.showText(QtGui.QCursor.pos(), item.toolTip(), self.inv_list)
 
     def change_health(self, delta: int) -> None:
         self.player.change_health(delta)
@@ -361,7 +367,11 @@ class AdventureWindow(QtWidgets.QMainWindow):
             self.add_item(obj)
             return None
 
-        drop = re.match(r"\b(?:suelto|tiro|descarto|dejo)\s+(.+)", text, re.I)
+        drop = re.search(
+            r"\b(?:suelto|soltar|sueltas?|tiro|tirar|tiras?|dejo|dejar|descarto|descartar|abandono|abandonar)\s+(.+)",
+            text,
+            re.I,
+        )
         if drop:
             nombre = extraer_objeto(drop.group(1))
             if any(obj.name == nombre for obj in self.player.inventory):
