@@ -1,6 +1,11 @@
 # Aventura Conversacional
 
-Esta aplicaci\u00f3n genera una historia interactiva al estilo de las viejas aventuras de texto, pero usando Azure OpenAI para narrar. El jugador despierta en las v\u00edas del Subte B, estaci\u00f3n Florida, y debe escribir qu\u00e9 hace para continuar. La historia se desarrolla en un Buenos Aires actual plagado de vampiros, con tono similar a *Vampire: The Masquerade*.
+Esta aplicaci\u00f3n genera una historia interactiva al estilo de las viejas aventuras de texto, usando Azure OpenAI como motor narrativo. El jugador controla su personaje en un mundo ficticio y toma decisiones a trav\u00e9s de la interfaz.
+
+Al iniciar, la ventana pregunta de forma inmersiva el nombre y el g\u00e9nero del jugador. Con esa informaci\u00f3n, la narraci\u00f3n se personaliza usando pronombres y el nombre elegido.
+
+El juego mantiene un inventario din\u00e1mico y un sistema de salud visible en pantalla (20/20 al comenzar). Al recoger o soltar objetos, la interfaz se actualiza en tiempo real.
+El combate se resuelve por turnos con dados d10 al estilo *Vampire: The Masquerade*. Las tiradas reales y el daño se muestran en colores diferentes y la salud solo cambia en el indicador de vida.
 
 ## Uso
 
