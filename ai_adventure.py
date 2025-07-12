@@ -81,13 +81,59 @@ def _create_ai_client() -> AzureOpenAI:
 
 @dataclass
 class Item:
-    name: str
+    """Representa un objeto del juego con todas sus propiedades."""
+
+    nombre: str
     tipo: str = "misceláneo"
-    funcion: str = ""
+    dano_base: str = ""
     dado: str = ""
     material: str = ""
     estado: str = "nuevo"
     peso: str = ""
+    rareza: str = ""
+    descripcion: str = ""
+
+    def tooltip(self) -> str:
+        """Devuelve una descripción detallada para usar en la GUI."""
+        return (
+            f"Nombre: {self.nombre}\n"
+            f"Tipo: {self.tipo}\n"
+            f"Daño base: {self.dano_base}\n"
+            f"Dado: {self.dado}\n"
+            f"Material: {self.material}\n"
+            f"Estado: {self.estado}\n"
+            f"Peso/Rareza: {self.peso or self.rareza}\n"
+            f"Descripción: {self.descripcion}"
+        ).strip()
+
+
+class Inventario:
+    """Contenedor persistente de todos los Items del jugador."""
+
+    def __init__(self) -> None:
+        self.items: list[Item] = []
+
+    def agregar_item(self, item: Item) -> None:
+        self.items.append(item)
+
+    def eliminar_item(self, nombre_objeto: str) -> None:
+        for obj in list(self.items):
+            if obj.nombre == nombre_objeto:
+                self.items.remove(obj)
+                break
+
+    def obtener_item(self, nombre_objeto: str) -> Item | None:
+        for obj in self.items:
+            if obj.nombre == nombre_objeto:
+                return obj
+        return None
+
+    def mostrar_inventario(self) -> list[Item]:
+        return list(self.items)
+
+    def obtener_tooltip(self, nombre_objeto: str) -> str | None:
+        item = self.obtener_item(nombre_objeto)
+        return item.tooltip() if item else None
 
 
 def extraer_objeto(texto: str) -> str:
@@ -119,13 +165,15 @@ def filtrar_entrada_jugador(texto: str) -> str:
 
 
 def extraer_atributos_item(bloque: str, nombre: str) -> Item:
+    """Extrae las propiedades de un ítem desde un bloque de texto."""
+
     item = Item(nombre)
     m = re.search(r"Tipo\s*:\s*([^\n]+)", bloque, re.I)
     if m:
         item.tipo = m.group(1).strip()
-    m = re.search(r"(?:Da\u00f1o|Funci\u00f3n)\s*:\s*([^\n]+)", bloque, re.I)
+    m = re.search(r"Da\u00f1o(?:_base)?\s*:\s*([^\n]+)", bloque, re.I)
     if m:
-        item.funcion = m.group(1).strip()
+        item.dano_base = m.group(1).strip()
     m = re.search(r"Dado\s*:\s*([^\n]+)", bloque, re.I)
     if m:
         item.dado = m.group(1).strip()
@@ -135,9 +183,12 @@ def extraer_atributos_item(bloque: str, nombre: str) -> Item:
     m = re.search(r"Estado\s*:\s*([^\n]+)", bloque, re.I)
     if m:
         item.estado = m.group(1).strip()
-    m = re.search(r"Peso/Rareza\s*:\s*([^\n]+)", bloque, re.I)
+    m = re.search(r"Peso\/Rareza\s*:\s*([^\n]+)", bloque, re.I)
     if m:
         item.peso = m.group(1).strip()
+    m = re.search(r"Descripci\u00f3n\s*:\s*([^\n]+)", bloque, re.I)
+    if m:
+        item.descripcion = m.group(1).strip()
     return item
 
 
@@ -154,7 +205,7 @@ class Player:
     def __init__(self) -> None:
         self.max_health = 20
         self.health = self.max_health
-        self.inventory: list["Item"] = []
+        self.inventory = Inventario()
         self.name: str = ""
         self.gender: str = ""
         self.age: str = ""
@@ -174,13 +225,10 @@ class Player:
         self.health = max(0, min(self.max_health, self.health + delta))
 
     def add_item(self, item: "Item") -> None:
-        self.inventory.append(item)
+        self.inventory.agregar_item(item)
 
     def remove_item(self, name: str) -> None:
-        for obj in list(self.inventory):
-            if obj.name == name:
-                self.inventory.remove(obj)
-                break
+        self.inventory.eliminar_item(name)
 
 
 class AdventureWindow(QtWidgets.QMainWindow):
@@ -323,30 +371,22 @@ class AdventureWindow(QtWidgets.QMainWindow):
 
     def update_inventory_display(self) -> None:
         self.inv_list.clear()
-        if not self.player.inventory:
+        items = self.player.inventory.mostrar_inventario()
+        if not items:
             empty_item = QtWidgets.QListWidgetItem("(vacío)")
             empty_item.setFlags(QtCore.Qt.NoItemFlags)
             self.inv_list.addItem(empty_item)
             QtWidgets.QToolTip.hideText()
             return
-        for obj in self.player.inventory:
-            widget_item = QtWidgets.QListWidgetItem(obj.name)
-            tooltip = (
-                f"Nombre: {obj.name}\n"
-                f"Tipo: {obj.tipo}\n"
-                f"Daño/Función: {obj.funcion}\n"
-                f"Dado: {obj.dado}\n"
-                f"Material: {obj.material}\n"
-                f"Estado: {obj.estado}\n"
-                f"Peso/Rareza: {obj.peso}"
-            )
-            widget_item.setToolTip(tooltip)
+        for obj in items:
+            widget_item = QtWidgets.QListWidgetItem(obj.nombre)
+            widget_item.setToolTip(obj.tooltip())
             self.inv_list.addItem(widget_item)
 
     def add_item(self, item: Item) -> None:
         self.player.add_item(item)
         self.update_inventory_display()
-        self.append_text(f'<i>Obtienes "{item.name}"</i>')
+        self.append_text(f'<i>Obtienes "{item.nombre}"</i>')
 
     def remove_item(self, name: str) -> None:
         self.player.remove_item(name)
@@ -355,12 +395,12 @@ class AdventureWindow(QtWidgets.QMainWindow):
         self.append_text(f'<i>"{name}" ha sido removido del inventario</i>')
 
     def update_item(self, old: str, new: Item) -> None:
-        for idx, obj in enumerate(self.player.inventory):
-            if obj.name == old:
-                self.player.inventory[idx] = new
+        for idx, obj in enumerate(self.player.inventory.mostrar_inventario()):
+            if obj.nombre == old:
+                self.player.inventory.items[idx] = new
                 break
         self.update_inventory_display()
-        self.append_text(f'<i>{old} ahora es "{new.name}"</i>')
+        self.append_text(f'<i>{old} ahora es "{new.nombre}"</i>')
 
     def actualizar_salud_en_gui(self) -> None:
         self.health_label.setText(
@@ -379,9 +419,9 @@ class AdventureWindow(QtWidgets.QMainWindow):
     def match_inventory_item(self, text: str) -> str | None:
         nombre = extraer_objeto(text)
         lower = nombre.lower()
-        for obj in self.player.inventory:
-            if re.search(rf"\b{re.escape(obj.name.lower())}\b", lower):
-                return obj.name
+        for obj in self.player.inventory.mostrar_inventario():
+            if re.search(rf"\b{re.escape(obj.nombre.lower())}\b", lower):
+                return obj.nombre
         return None
 
     def change_health(self, delta: int) -> None:
@@ -469,14 +509,16 @@ class AdventureWindow(QtWidgets.QMainWindow):
         for dmg in re.findall(r"Recibes\s+(\d+)\s+punto", text, re.I):
             self.change_health(-int(dmg))
         for obj in obtener_items_con_propiedades(text):
-            existing = next((x for x in self.player.inventory if x.name == obj.name), None)
+            existing = self.player.inventory.obtener_item(obj.nombre)
             if existing:
                 existing.tipo = obj.tipo
-                existing.funcion = obj.funcion
+                existing.dano_base = obj.dano_base
                 existing.dado = obj.dado
                 existing.material = obj.material
                 existing.estado = obj.estado
                 existing.peso = obj.peso
+                existing.rareza = obj.rareza
+                existing.descripcion = obj.descripcion
                 self.update_inventory_display()
             else:
                 self.add_item(obj)

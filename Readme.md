@@ -23,4 +23,5 @@ Cada commit en `main` genera un zip `ai_adventure_portable.zip` en [Releases](..
 
 - Ahora podés mencionar texto extra al tirar objetos ("al piso", "con fuerza", etc.) y el juego reconocerá correctamente cuál deseás soltar.
 - El tooltip del inventario se expande automáticamente para mostrar todas las propiedades del ítem.
+- Sistema de inventario reescrito con clases `Item` e `Inventario` para garantizar consistencia y tooltips precisos.
 
