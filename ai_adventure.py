@@ -43,6 +43,7 @@ Personalización:
 Estilo narrativo:
 - Sé conciso, usa 4-5 líneas por respuesta salvo escenas importantes.
 - Narra acciones de NPCs y consecuencias, siempre esperando la próxima decisión del jugador.
+- Narrá en segunda persona hablándole al jugador directamente. Ejemplo: "Lanzás el dado" en vez de "Moki lanza el dado".
 
 Este prompt permanece activo toda la sesión. Inicia la historia ahora.
 """
@@ -115,6 +116,37 @@ def filtrar_entrada_jugador(texto: str) -> str:
         flags=re.I,
     )
     return limpio
+
+
+def extraer_atributos_item(bloque: str, nombre: str) -> Item:
+    item = Item(nombre)
+    m = re.search(r"Tipo\s*:\s*([^\n]+)", bloque, re.I)
+    if m:
+        item.tipo = m.group(1).strip()
+    m = re.search(r"(?:Da\u00f1o|Funci\u00f3n)\s*:\s*([^\n]+)", bloque, re.I)
+    if m:
+        item.funcion = m.group(1).strip()
+    m = re.search(r"Dado\s*:\s*([^\n]+)", bloque, re.I)
+    if m:
+        item.dado = m.group(1).strip()
+    m = re.search(r"Material\s*:\s*([^\n]+)", bloque, re.I)
+    if m:
+        item.material = m.group(1).strip()
+    m = re.search(r"Estado\s*:\s*([^\n]+)", bloque, re.I)
+    if m:
+        item.estado = m.group(1).strip()
+    m = re.search(r"Peso/Rareza\s*:\s*([^\n]+)", bloque, re.I)
+    if m:
+        item.peso = m.group(1).strip()
+    return item
+
+
+def obtener_items_con_propiedades(texto: str) -> list[Item]:
+    items = []
+    patron = re.compile(r'Obtienes\s+\"([^\"]+)\"(.*?)(?=\n?Obtienes|$)', re.S | re.I)
+    for nombre, bloque in patron.findall(texto):
+        items.append(extraer_atributos_item(bloque, nombre))
+    return items
 
 
 
@@ -279,7 +311,7 @@ class AdventureWindow(QtWidgets.QMainWindow):
         inv_layout.addWidget(level_group)
 
         self.update_inventory_display()
-        self.update_health_display()
+        self.actualizar_salud_en_gui()
         self.update_level_display()
 
         self.inv_list.setMouseTracking(True)
@@ -291,6 +323,12 @@ class AdventureWindow(QtWidgets.QMainWindow):
 
     def update_inventory_display(self) -> None:
         self.inv_list.clear()
+        if not self.player.inventory:
+            empty_item = QtWidgets.QListWidgetItem("(vacío)")
+            empty_item.setFlags(QtCore.Qt.NoItemFlags)
+            self.inv_list.addItem(empty_item)
+            QtWidgets.QToolTip.hideText()
+            return
         for obj in self.player.inventory:
             widget_item = QtWidgets.QListWidgetItem(obj.name)
             tooltip = (
@@ -313,6 +351,7 @@ class AdventureWindow(QtWidgets.QMainWindow):
     def remove_item(self, name: str) -> None:
         self.player.remove_item(name)
         self.update_inventory_display()
+        QtWidgets.QToolTip.hideText()
         self.append_text(f'<i>"{name}" ha sido removido del inventario</i>')
 
     def update_item(self, old: str, new: Item) -> None:
@@ -323,7 +362,7 @@ class AdventureWindow(QtWidgets.QMainWindow):
         self.update_inventory_display()
         self.append_text(f'<i>{old} ahora es "{new.name}"</i>')
 
-    def update_health_display(self) -> None:
+    def actualizar_salud_en_gui(self) -> None:
         self.health_label.setText(
             f"Salud: {self.player.health}/{self.player.max_health}"
         )
@@ -332,6 +371,8 @@ class AdventureWindow(QtWidgets.QMainWindow):
         self.level_label.setText(f"Nivel: {self.player.level}")
 
     def show_item_tooltip(self, item: QtWidgets.QListWidgetItem) -> None:
+        if not item.toolTip():
+            return
         QtWidgets.QToolTip.setFont(QtGui.QFont("Consolas", 10))
         QtWidgets.QToolTip.showText(QtGui.QCursor.pos(), item.toolTip(), self.inv_list)
 
@@ -345,7 +386,7 @@ class AdventureWindow(QtWidgets.QMainWindow):
 
     def change_health(self, delta: int) -> None:
         self.player.change_health(delta)
-        self.update_health_display()
+        self.actualizar_salud_en_gui()
 
     def roll_vtm_dice(self, pool: int) -> tuple[list[int], int]:
         results = [random.randint(1, 10) for _ in range(pool)]
@@ -424,12 +465,21 @@ class AdventureWindow(QtWidgets.QMainWindow):
         if vida:
             self.player.health = int(vida.group(1))
             self.player.max_health = int(vida.group(2))
-            self.update_health_display()
+            self.actualizar_salud_en_gui()
         for dmg in re.findall(r"Recibes\s+(\d+)\s+punto", text, re.I):
             self.change_health(-int(dmg))
-        for item in re.findall(r"Obtienes\s+\"([^\"]+)\"", text, re.I):
-            if not any(obj.name == item for obj in self.player.inventory):
-                self.add_item(Item(item))
+        for obj in obtener_items_con_propiedades(text):
+            existing = next((x for x in self.player.inventory if x.name == obj.name), None)
+            if existing:
+                existing.tipo = obj.tipo
+                existing.funcion = obj.funcion
+                existing.dado = obj.dado
+                existing.material = obj.material
+                existing.estado = obj.estado
+                existing.peso = obj.peso
+                self.update_inventory_display()
+            else:
+                self.add_item(obj)
         lvl_up = re.search(r"Nivel\s+(\d+)", text)
         if lvl_up:
             nuevo = int(lvl_up.group(1))
